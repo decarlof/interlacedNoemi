@@ -1,72 +1,93 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from epics import PV
 
-def generate_angles_timbir(N_theta, K):
-    """
-    Generate TIMBIR-style interlaced angles using bit-reversal ordering.
+  #----------------------------------------------------
+  # TIMBIR con EPICS 
+  #----------------------------------------------------
 
-    Parameters
-    ----------
-    N_theta : int
-        Total number of projections (acquired angles).
-    K : int
-        Number of interlaced loops (must be a power of 2).
+N_theta = 32   # total projections
+K = 4          # number of interlaced loops
+r_outer = 1.0  # radius for first loop
+r_step = 0.15  # radial step between loops
 
-    Returns
-    -------
-    angles_deg : np.ndarray
-        Array of acquisition angles in degrees, mapped in [0, 180).
-    loop_idx : np.ndarray
-        Array of loop indices (0 .. K-1) to which each angle belongs.
-    """
-    # ------------------------
-    # Bit-reversal helper
-    # ------------------------
-    def bit_reverse(x, bits):
-        b = f'{x:0{bits}b}'   # rappresentazione binaria con bits
-        return int(b[::-1], 2)  # inverti la stringa e riconverti in intero
+# PV che contiene il numero di impulsi per giro
+pso_counts_pv = PV('PSOCountsPerRotation')
 
-    # numero di bit necessario per rappresentare K loop
-    bits = int(np.log2(K))
-    angles = []
-    loop_indices = []
-    # ------------------------
-    # Compute acquisition angles in time order
-    # ------------------------
-    for n in range(N_theta):  # indice base legato al tempo
-        base = n * K   # loop di appartenenza (0..K-1)
-        
-        loop = (base // N_theta) % K  # bit-reversal del loop index
-        
-        rev = bit_reverse(loop, bits)    # indice finale per l'angolo
-      
-        val = base + rev  
-        
-        theta = val * 360.0 / N_theta     # angolo su 360° (TIMBIR originale)
-        
-        theta = theta % 180.0     # mappo su 0, 180° per tomo
+# ------------------------
+# Bit-reversal function
+# ------------------------
+def bit_reverse(x, bits):
+    b = f'{x:0{bits}b}'
+    return int(b[::-1], 2)
 
-        angles.append(theta)
-        loop_indices.append(loop)
+# ------------------------
+# Generate TIMBIR angles
+# ------------------------
+angles = []
+loop_indices = []
+bits = int(np.log2(K))
 
-    return np.array(angles), np.array(loop_indices)
+for n in range(N_theta):
+    base = n * K
+    loop = (base // N_theta) % K
+    rev = bit_reverse(loop, bits)
+    val = base + rev
 
-# Chiamo la funzione 
-  angles, loops = generate_angles_timbir(N_theta=32, K=4)
+    theta = val * 360.0 / N_theta
+    theta = theta % 180.0  # 180° for tomography
 
-print("Angles:", angles)
-print("Loop indices:", loops)
+    angles.append(theta)
+    loop_indices.append(loop)
 
-   
+angles = np.array(angles)
+loop_indices = np.array(loop_indices)
 
 
   #----------------------------------------------------
   # Prendi angles_deg e converti in impulsi reali  vedi formula su appunti
   #----------------------------------------------------
-''' La conversione in inmpulsi prende angoli in gradi e li traforma in  N impulsi dell'encoder  '''
+''' Converte gli angoli in impulsi PSO reali leggendo PSOCountsPerRotation dal PV EPICS '''
 
+def angles_to_pulses_epics(angles_deg):
+    """
+    Convert angles (deg) to PSO pulses using EPICS counts per revolution.
+    """
+    counts_per_rev = float(pso_counts_pv.get())
+    pulses = angles_deg * (counts_per_rev / 360.0)
+    return np.round(pulses).astype(int)
 
+pulses = angles_to_pulses_epics(angles)
 
+# ------------------------
+# Assign radius based on loop for plotting
+# ------------------------
+radii = r_outer - loop_indices * r_step
 
+# ------------------------
+# PLOT
+# ------------------------
+fig = plt.figure(figsize=(7,7))
+ax = fig.add_subplot(111, polar=True)
+ax.set_title(f"TIMBIR Interlaced Acquisition (N={N_theta} - K={K})\nEach loop on its own circle", va='bottom', fontsize=13)
+
+# Connect points in true acquisition order
+ax.plot(angles * np.pi/180, radii, '-o', lw=1.2, ms=5, alpha=0.8, color='tab:blue')  # convert deg -> rad
+
+# Optional: annotate loop number
+for i in range(N_theta):
+    ax.text(angles[i]*np.pi/180, radii[i]+0.03, str(loop_indices[i]+1), ha='center', va='bottom', fontsize=8)
+
+# Hide radial ticks
+ax.set_rticks([])
+plt.show()
+
+# ------------------------
+# Print results
+# ------------------------
+for i in range(N_theta):
+    print(f"Angle {angles[i]:6.2f} deg -> Loop {loop_indices[i]} -> Pulse {pulses[i]}")
+    
 
   #----------------------------------------------------
   # Calcola i ritardi tra un impulso e il successivo (memPulseSeq)
