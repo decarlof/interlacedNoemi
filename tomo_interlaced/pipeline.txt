@@ -1,0 +1,84 @@
+1. Generazione angoli
+
+✅ Hai implementato TIMBIR con bit reversal.
+❌ Manca l’implementazione di altri schemi interlaced (uniform, even/odd, random, golden).
+💡 Serve una funzione generate_angles(method, params) che gestisca tutti i metodi in modo modulare.
+
+2. Conversione angoli → impulsi
+
+✅ Hai la funzione base di conversione angles_corrected_to_pulses_epics.
+❌ Attualmente usa solo la correzione start taxi; la parte più generale della rampa (accelerazione + decelerazione) non è applicata agli impulsi finali, ma solo per calcolare il trigger temporale.
+💡 Bisognerebbe calcolare gli impulsi reali finali tenendo conto della velocità istantanea del PSO, non solo moltiplicando l’angolo corretto per counts_per_rev / 360.
+
+3. Modello taxi
+
+✅ Hai implementato t_real(theta_target, ...) per ricavare i tempi corretti.
+✅ Hai omega_inst per la velocità istantanea.
+❌ Non stai usando questa informazione per generare impulsi reali “corretti” dal punto di vista dell’hardware: ad esempio, a velocità più alta il motore potrebbe saltare step, e lo script non li stima né corregge.
+💡 Serve almeno un modello di compensazione del taxi sul numero di impulsi effettivi.
+
+4. Output logistico
+
+❌ Non scrivi file CSV o array con tutti e quattro i vettori richiesti:
+
+angoli ideali (angles_timbir)
+
+angoli reali (theta_corrected)
+
+impulsi ideali (angles_timbir * counts_per_deg)
+
+impulsi reali (pulses_real con eventuali correzioni taxi)
+
+💡 Bisogna aggiungere un’istruzione tipo np.savetxt("scan.csv", data, delimiter=",") o equivalente.
+
+5. Integrazione in tomoscan
+
+❌ Non hai ancora creato una routine unica tipo:
+
+def generate_interlaced_scan(method, params, hardware_params):
+    # chiama generate_angles
+    # chiama conversione impulsi
+    # chiama taxi correction
+    # restituisce array/CSV
+    return ...
+
+
+💡 Questo serve per inserire tutto nel callback Python del PSO.
+
+6. Parametri hardware dinamici
+
+❌ Alcuni parametri importanti sono hardcoded, ad esempio:
+
+omega_target, T_acc, T_dec
+
+N_theta, K
+💡 Serve passare questi valori come input della funzione o leggere da PV EPICS.
+
+7. Robustezza
+
+❌ Lo script non gestisce:
+
+input non multiplo di 2 per TIMBIR (bit reversal assume log2(K))
+
+N_theta non compatibile con K
+
+eventuali errori PV (ritorno None da pv.get())
+
+💡 Aggiungere controlli input e warning.
+
+
+
+
+✅ In sintesi, i pezzi mancanti
+
+Generazione angoli per tutti i tipi di interlaced.
+
+Funzione unica generate_interlaced_scan(...).
+
+Impulsi reali corretti tenendo conto di moto reale (accelerazione + decelerazione) oltre che correzione taxi.
+
+Output completo (angoli ideali/reali, impulsi ideali/reali) su CSV o array.
+
+Parametri hardware e scan dinamici (non hardcoded).
+
+Controlli di robustezza su input e PV.
