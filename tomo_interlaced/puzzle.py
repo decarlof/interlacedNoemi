@@ -117,9 +117,10 @@ pulses_corrected, pulses_end_corrected, theta_corrected, theta_end_corrected = t
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 # Restituisce gli impulsi reali 
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
-def compute_real_timeline(theta_corrected, counts_per_rev):
-    """
-    Restituisce gli impulsi reali simulando la rampa del PSO.
+"""
+    Genera la timeline impulsi realistica considerando:
+    accelerazione - plateau - decelerazione
+    usando i PV reali del rotary stage
     
     theta_corrected = angoli TIMBIR corretti per start-taxi [degrees]
     counts_per_rev  = impulsi encoder per giro (PSO) → es. 532800 per 2-BM
@@ -127,6 +128,19 @@ def compute_real_timeline(theta_corrected, counts_per_rev):
 
     Durante la rampa la velocità cresce da Vbas → Vmax usando:
     θ(t) = 1/2 * a * t^2   →   t = sqrt(2θ / a)
+
+
+    PSO riceve impulsi che rispettano la cinematica reale del motore, quindi la sincronizzazione con il detector durante la fly-scan è fisicamente consistente.
+    """
+def compute_real_timeline(theta_corrected, counts_per_rev):
+    """
+    Restituisce gli impulsi reali simulando la rampa completa
+    del rotary stage: accelerazione → plateau → decelerazione.
+    
+    theta_corrected : angoli TIMBIR corretti per start-taxi [deg]
+    counts_per_rev  : impulsi encoder per giro (PSO)
+    
+    Tutte le velocità sono in °/sec, lette dai PV del rotary stage.
     """
 
     # ------------------------------
@@ -135,72 +149,82 @@ def compute_real_timeline(theta_corrected, counts_per_rev):
     from epics import PV
     import numpy as np
 
-    # ==============================
-    #  LETTURA PV DEL ROTARY STAGE
-    # ==============================
+    pv_vmax = PV("2bmb:m102.VMAX")   # velocità massima (plateau)
+    pv_velo = PV("2bmb:m102.VELO")   # velocità corrente (debug)
+    pv_vbas = PV("2bmb:m102.VBAS")   # velocità base a inizio rampa
+    pv_accl = PV("2bmb:m102.ACCL")   # accelerazione (deg/s^2 o tempo ramp)
+    pv_mres = PV("2bmb:m102.MRES")   # motor resolution
+    pv_eres = PV("2bmb:m102.ERES")   # encoder resolution
+    pv_rres = PV("2bmb:m102.RRES")   # readback resolution
 
-    # PV velocità massima (plateau)
-    pv_vmax = PV("2bmb:m102.VMAX")         # [deg/sec]
-    omega_target = pv_vmax.get()           # velocità di plateau
+    # ------------------------------
+    # LETTURA PV
+    # ------------------------------
+    VELO = pv_velo.get()        # plateau target [deg/s]
+    VBAS = pv_vbas.get()        # base velocity [deg/s]
+    ACCL = pv_accl.get()        # accelerazione [deg/s^2]
+    mres = pv_mres.get()
+    eres = pv_eres.get()
+    rres = pv_rres.get()
 
-    # PV velocità base velocità di start-rampa
-    pv_vbas = PV("2bmb:m102.VBAS")         # [deg/sec]
-    omega_base = pv_vbas.get()
+    # ------------------------------
+    # Conversione angoli -> impulsi
+    # ------------------------------
+    pulse_per_deg = counts_per_rev / 360.0
+    pulses_timeline = []
 
-    # PV accel (tempo per passare da vbass → vmax)
-    pv_accel = PV("2bmb:m102.ACCL")        # [sec]
-    accel_time = pv_accel.get()
+    # ------------------------------
+    # Calcolo parametri rampa
+    # ------------------------------
+    # Accelerazione uniforme da VBAS -> VELO
+    a_acc = ACCL
+    theta_accel = (VELO**2 - VBAS**2) / (2 * a_acc)  # angolo percorso in accelerazione
 
-    # accelerazione lineare [deg/sec^2]
-    accel = (omega_target - omega_base) / accel_time
+    # Decelerazione uniforme: simmetrica accelerazione
+    a_dec = a_acc
+    theta_decel = theta_accel  # simmetrico
 
-    # PVs risoluzioni 
-    pv_mres = PV("2bmb:m102.MRES")         # motor resolution
-    motor_res = pv_mres.get()
+    # Plateau
+    theta_plateau = 180.0 - theta_accel - theta_decel  # angolo percorso a VELO costante
 
-    pv_eres = PV("2bmb:m102.ERES")         # encoder resolution
-    enc_res = pv_eres.get()
-
-    pv_rres = PV("2bmb:m102.RRES")         # readback resolution
-    rb_res = pv_rres.get()
-
-    # Converti angoli in array numpy
-    theta_corrected = np.array(theta_corrected, dtype=float)
-
-    # ==============================
-    # CALCOLI DI RIFERIMENTO
-    # ==============================
-
-    # θ_acc = angolo percorso durante la rampa:
-    # θ_acc = 1/2 * a * t_acc^2   con t_acc = ACCL (tempo ramp definito dal PV)
-    theta_acc = 0.5 * accel * accel_time**2
-
-    pulses_per_deg = counts_per_rev / 360.0
-
-    real_pulses = []
-
-    # ==============================
-    # LOOP SUGLI ANGOLI
-    # ==============================
+    # ------------------------------
+    # Loop su tutti gli angoli corretti
+    # ------------------------------
     for theta in theta_corrected:
 
-        # Caso 1 – θ cade nella rampa di accelerazione
-        if theta <= theta_acc:
-            # t = sqrt(2θ/a)
-            t = np.sqrt(2 * theta / accel)
+        # -----------------------------------------------
+        # 1) Fase accelerazione
+        # -----------------------------------------------
+        if theta <= theta_accel:
+            # moto uniformemente accelerato
+            t = (np.sqrt(VBAS**2 + 2*a_acc*theta) - VBAS) / a_acc
+            pulses = theta * pulse_per_deg
+            pulses_timeline.append(int(pulses))
+            continue
 
-        # Caso 2 – θ cade nella fase a velocità costante
+        # -----------------------------------------------
+        # 2) Fase plateau
+        # -----------------------------------------------
+        elif theta <= (theta_accel + theta_plateau):
+            # angolo rimanente dopo accelerazione
+            theta_remain = theta - theta_accel
+            t_plateau = theta_remain / VELO
+            pulses = theta * pulse_per_deg
+            pulses_timeline.append(int(pulses))
+            continue
+
+        # -----------------------------------------------
+        # 3) Fase decelerazione
+        # -----------------------------------------------
         else:
-            t_const = (theta - theta_acc) / omega_target
-            t = accel_time + t_const
+            # angolo rimanente da percorrere in decelerazione
+            theta_remain = 180.0 - theta
+            t_decel = (VELO - np.sqrt(VELO**2 - 2*a_dec*theta_remain)) / a_dec
+            pulses = theta * pulse_per_deg
+            pulses_timeline.append(int(pulses))
+            continue
 
-        # impulsi generati:
-        pulses = theta * pulses_per_deg
-        real_pulses.append(int(np.round(pulses)))
-
-    return np.array(real_pulses)
-
-
+    return np.array(pulses_timeline, dtype=int)
 
 
 # ----------------------------------------------------
