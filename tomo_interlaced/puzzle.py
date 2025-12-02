@@ -2,7 +2,7 @@ import numpy as np
 from epics import PV
 
 # ----------------------------------------------------
-# PARAMETRI DI BASE
+# Timbir
 # ----------------------------------------------------
 N_theta = 32    # numero totale di proiezioni
 K = 4           # numero di loop interlacciati
