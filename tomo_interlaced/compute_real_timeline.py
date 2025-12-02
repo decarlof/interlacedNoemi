@@ -2,12 +2,12 @@ import numpy as np
 
 def compute_real_timeline(theta_corrected, omega_target, accel, counts_per_rev):
     """
-    Restituisce gli impulsi reali simulando la rampa del PSO.
+    Restituisce gli impulsi reali simulando la rampa del PSO
     θ is in degrees.
     """
     theta_corrected = np.array(theta_corrected)
 
-    # --- 1) Calcola tempo necessario per accelerare ---
+    # Calcola tempo necessario per accelerare 
     t_acc = omega_target / accel
     theta_acc = 0.5 * accel * t_acc**2
 
