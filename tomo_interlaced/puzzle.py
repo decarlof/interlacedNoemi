@@ -130,7 +130,14 @@ pulses_corrected, pulses_end_corrected, theta_corrected, theta_end_corrected = t
     θ(t) = 1/2 * a * t^2   →   t = sqrt(2θ / a)
 
 
-    PSO riceve impulsi che rispettano la cinematica reale del motore, quindi la sincronizzazione con il detector durante la fly-scan è fisicamente consistente.
+    PSO riceve impulsi che rispettano la cinematica reale del motore, quindi la sincronizzazione con il detector durante la fly-scan è fisicamente consistente
+
+Usa PV reali (VMAX, VELO, VBAS, ACCL) per calcolare accelerazione e plateau
+
+Divide la rampa in 3 fasi: accelerazione, plateau, decelerazione
+
+Converte angoli corretti TIMBIR in impulsi usando le risoluzioni reali
+
     """
 def compute_real_timeline(theta_corrected, counts_per_rev):
     """
@@ -146,9 +153,7 @@ def compute_real_timeline(theta_corrected, counts_per_rev):
     # ------------------------------
     # IMPORT EPICS PV
     # ------------------------------
-    from epics import PV
-    import numpy as np
-
+    
     pv_vmax = PV("2bmb:m102.VMAX")   # velocità massima (plateau)
     pv_velo = PV("2bmb:m102.VELO")   # velocità corrente (debug)
     pv_vbas = PV("2bmb:m102.VBAS")   # velocità base a inizio rampa
