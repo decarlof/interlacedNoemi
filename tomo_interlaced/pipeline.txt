@@ -71,13 +71,96 @@ Robustezza input e gestione errori PV
 
 
 
+L’obiettivo è che gli impulsi finali (pulses_real) non siano solo la conversione lineare theta * counts_per_deg, ma rispettino la rampa reale del motore (accelerazione → plateau → decelerazione). Manteniamo tutti i commenti per chiarezza.
+
+Ecco la versione aggiornata della funzione angles_corrected_to_pulses_epics che incorpora la rampa reale:
 
 
 
 
 
 
+def angles_corrected_to_pulses_epics(theta_corrected):
+    """
+    Converte un array di angoli TIMBIR corretti per il taxi (in gradi)
+    in impulsi PSO realistici, rispettando la cinematica reale del rotary stage
+    (accelerazione → plateau → decelerazione) usando PV reali.
 
+    Parametri:
+        theta_corrected : array/lista di angoli TIMBIR corretti [deg]
+
+    Ritorna:
+        pulses_real : array di impulsi PSO interi coerenti con la rampa
+    """
+
+    # ------------------------------
+    # Lettura PV rotary stage
+    # ------------------------------
+    pv_vmax = PV("2bmb:m102.VMAX")   # velocità massima (plateau)
+    pv_velo = PV("2bmb:m102.VELO")   # velocità corrente (debug)
+    pv_vbas = PV("2bmb:m102.VBAS")   # velocità base a inizio rampa
+    pv_accl = PV("2bmb:m102.ACCL")   # accelerazione [deg/s^2]
+    pv_counts = PV("2bmb:TomoScan:PSOCountsPerRotation")  # impulsi PSO per giro
+
+    VELO = pv_vmax.get()      # deg/s
+    VBAS = pv_vbas.get()      # deg/s
+    ACCL = pv_accl.get()      # deg/s^2
+    counts_per_rev = pv_counts.get()
+
+    # ------------------------------
+    # Conversione angoli -> impulsi
+    # ------------------------------
+    pulse_per_deg = counts_per_rev / 360.0
+    pulses_real = []
+
+    # ------------------------------
+    # Calcolo parametri rampa
+    # ------------------------------
+    # Angolo percorso durante accelerazione
+    theta_accel = (VELO**2 - VBAS**2) / (2 * ACCL)
+    # Angolo percorso durante decelerazione (simmetrico)
+    theta_decel = theta_accel
+    # Plateau
+    theta_plateau = 180.0 - theta_accel - theta_decel
+
+    # ------------------------------
+    # Loop su tutti gli angoli corretti
+    # ------------------------------
+    for theta in theta_corrected:
+
+        # -----------------------------------------------
+        # 1) Fase accelerazione
+        # -----------------------------------------------
+        if theta <= theta_accel:
+            # moto uniformemente accelerato da VBAS
+            t = (np.sqrt(VBAS**2 + 2 * ACCL * theta) - VBAS) / ACCL
+            pulses = theta * pulse_per_deg
+            pulses_real.append(int(pulses))
+            continue
+
+        # -----------------------------------------------
+        # 2) Fase plateau
+        # -----------------------------------------------
+        elif theta <= (theta_accel + theta_plateau):
+            # angolo rimanente dopo accelerazione
+            theta_remain = theta - theta_accel
+            t_plateau = theta_remain / VELO
+            pulses = theta * pulse_per_deg
+            pulses_real.append(int(pulses))
+            continue
+
+        # -----------------------------------------------
+        # 3) Fase decelerazione
+        # -----------------------------------------------
+        else:
+            # angolo rimanente da percorrere in decelerazione
+            theta_remain = 180.0 - theta
+            t_decel = (VELO - np.sqrt(VELO**2 - 2*ACCL*theta_remain)) / ACCL
+            pulses = theta * pulse_per_deg
+            pulses_real.append(int(pulses))
+            continue
+
+    return np.array(pulses_real, dtype=int)
 
 
 
