@@ -1,25 +1,30 @@
 1. Generazione angoli
 
-✅ Hai implementato TIMBIR con bit reversal.
-❌ Manca l’implementazione di altri schemi interlaced (uniform, even/odd, random, golden).
-💡 Serve una funzione generate_angles(method, params) che gestisca tutti i metodi in modo modulare.
+✅ TIMBIR con bit reversal è implementato.
+
+❌ Altri schemi interlaced (uniform, even/odd, random, golden) non sono implementati.
+
+💡 Serve ancora una funzione modulare generate_angles(method, params).
 
 2. Conversione angoli → impulsi
 
-✅ Hai la funzione base di conversione angles_corrected_to_pulses_epics.
-❌ Attualmente usa solo la correzione start taxi; la parte più generale della rampa (accelerazione + decelerazione) non è applicata agli impulsi finali, ma solo per calcolare il trigger temporale.
-💡 Bisognerebbe calcolare gli impulsi reali finali tenendo conto della velocità istantanea del PSO, non solo moltiplicando l’angolo corretto per counts_per_rev / 360.
+✅ La funzione base angles_corrected_to_pulses_epics c’è.
+
+❌ Non applica la rampa accelerazione/decelerazione agli impulsi finali, solo la moltiplicazione counts_per_rev / 360.
+
+✅ La funzione compute_real_timeline simula rampa completa accel–plateau–decel, quindi questa parte è coperta, ma ancora separata da angles_corrected_to_pulses_epics.
 
 3. Modello taxi
 
-✅ Hai implementato t_real(theta_target, ...) per ricavare i tempi corretti.
-✅ Hai omega_inst per la velocità istantanea.
-❌ Non stai usando questa informazione per generare impulsi reali “corretti” dal punto di vista dell’hardware: ad esempio, a velocità più alta il motore potrebbe saltare step, e lo script non li stima né corregge.
-💡 Serve almeno un modello di compensazione del taxi sul numero di impulsi effettivi.
+✅ La correzione start/end taxi è implementata in taxi_correct.
+
+❌ Non esiste compensazione dei salti di step o errori hardware reali basati sulla velocità istantanea (omega_inst).
+
+💡 Serve un modello più realistico per generare impulsi PSO “corretti” in termini di hardware.
 
 4. Output logistico
 
-❌ Non scrivi file CSV o array con tutti e quattro i vettori richiesti:
+❌ Non viene scritto CSV o array con tutti e quattro i vettori richiesti:
 
 angoli ideali (angles_timbir)
 
@@ -27,105 +32,41 @@ angoli reali (theta_corrected)
 
 impulsi ideali (angles_timbir * counts_per_deg)
 
-impulsi reali (pulses_real con eventuali correzioni taxi)
+impulsi reali (pulses_real)
 
-💡 Bisogna aggiungere un’istruzione tipo np.savetxt("scan.csv", data, delimiter=",") o equivalente.
+💡 Serve aggiungere np.savetxt("scan.csv", ...).
 
 5. Integrazione in tomoscan
 
-❌ Non hai ancora creato una routine unica tipo:
-
-def generate_interlaced_scan(method, params, hardware_params):
-    # chiama generate_angles
-    # chiama conversione impulsi
-    # chiama taxi correction
-    # restituisce array/CSV
-    return ...
-
-
-💡 Questo serve per inserire tutto nel callback Python del PSO.
+❌ Non c’è ancora una routine unica tipo generate_interlaced_scan che richiami tutto (angoli, taxi, impulsi reali).
 
 6. Parametri hardware dinamici
 
-❌ Alcuni parametri importanti sono hardcoded, ad esempio:
+✅ Alcuni parametri come N_theta e K ora sono letti da PV.
 
-omega_target, T_acc, T_dec
-
-N_theta, K
-💡 Serve passare questi valori come input della funzione o leggere da PV EPICS.
+❌ Parametri come VELO, ACCL, theta_accel, plateau, ecc. sono ancora in parte hardcoded o calcolati separatamente; sarebbe meglio passarli come input o leggere sempre da PV.
 
 7. Robustezza
 
-❌ Lo script non gestisce:
+❌ Lo script non gestisce errori PV (None o timeout).
 
-input non multiplo di 2 per TIMBIR (bit reversal assume log2(K))
+❌ Non ci sono controlli su N_theta compatibile con K o K non multiplo di 2 (TIMBIR assume log2(K)).
 
-N_theta non compatibile con K
+✅ Sintesi
 
-eventuali errori PV (ritorno None da pv.get())
+Completato: TIMBIR, taxi correction base, rampa accel-plateau-decel simulata
 
-💡 Aggiungere controlli input e warning.
+Mancano ancora:
 
+Altri schemi interlaced
 
+Impulsi reali con compensazione hardware avanzata
 
+Output completo CSV/array
 
-✅ In sintesi, i pezzi mancanti
+Routine unica integrata
 
-Generazione angoli per tutti i tipi di interlaced.
-
-Funzione unica generate_interlaced_scan(...).
-
-Impulsi reali corretti tenendo conto di moto reale (accelerazione + decelerazione) oltre che correzione taxi.
-
-Output completo (angoli ideali/reali, impulsi ideali/reali) su CSV o array.
-
-Parametri hardware e scan dinamici (non hardcoded).
-
-Controlli di robustezza su input e PV.
-
-
-PVs rotary STAGE:
-maximum speed  2bmb:m102.VMAX
-speed  2bmb:m102.VELO
-base speed  2bmb:m102.Vbas
-Accel 2bmb:m102.ACCL
-
-motor resolution 
-motor resolution   2bmb:m102.MRES
-encoder resolution  2bmb:m102.ERES
-read back resolution  2bmb:m102.RRES
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Robustezza input e gestione errori PV
 
 
 
