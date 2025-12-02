@@ -82,3 +82,62 @@ Output completo (angoli ideali/reali, impulsi ideali/reali) su CSV o array.
 Parametri hardware e scan dinamici (non hardcoded).
 
 Controlli di robustezza su input e PV.
+
+
+PVs rotary STAGE:
+maximum speed  2bmb:m102.VMAX
+speed  2bmb:m102.VELO
+base speed  2bmb:m102.Vbas
+Accel 2bmb:m102.ACCL
+
+motor resolution 
+motor resolution   2bmb:m102.MRES
+encoder resolution  2bmb:m102.ERES
+read back resolution  2bmb:m102.RRES
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
