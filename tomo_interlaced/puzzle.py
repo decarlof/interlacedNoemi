@@ -2,22 +2,24 @@ import numpy as np
 from epics import PV
 
 # ----------------------------------------------------
-# Timbir
+# TIMBIR e nuovi PVs 
 # ----------------------------------------------------
-N_theta = 32    # numero totale di proiezioni
-K = 4           # numero di loop interlacciati
-r_outer = 1.0   # raggio del primo loop (per plot)
-r_step = 0.15   # passo radiale tra i loop (per plot)
+
+pv_N_theta = PV("2bmb:TomoScan:NTheta")          # numero totale proiezioni  NUOVO PV
+pv_K       = PV("2bmb:TomoScan:KLoops")         # numero di loop interlacciati  NUOVO PV
+
+N_theta = int(pv_N_theta.get()) or 32  # numero totale proiezioni 
+K       = int(pv_K.get()) or 4          # numero di loop interlacciati 
 
 # ----------------------------------------------------
-# EPICS PVs
+# EPICS PVs per Taxi e PSO
 # ----------------------------------------------------
 pv_start_taxi = PV("2bmb:TomoScan:PSOStartTaxi")         # Posizione di inizio taxi [deg]
 pv_end_taxi   = PV("2bmb:TomoScan:PSOEndTaxi")           # Posizione di fine taxi [deg]
 pv_counts     = PV("2bmb:TomoScan:PSOCountsPerRotation") # Numero di impulsi per giro del PSO
 
 # Lettura dai PV
-start_taxi     = pv_start_taxi.get()           # es: -0.749939 deg
+start_taxi     = pv_start_taxi.get()           # es: -0.749939 degimbir
 end_taxi       = pv_end_taxi.get()             # es: 0.735 deg
 counts_per_rev = pv_counts.get()               # es: 11_840_200 impulsi/giro
 
@@ -57,7 +59,7 @@ loop_indices = np.array(loop_indices)
 def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
     """
     Corregge gli angoli TIMBIR considerando l'inizio taxi
-    e la fine taxi, e li converte in impulsi PSO.
+    e la fine taxi, e li converte in impulsi PSO
     
     Parametri:
         angles_deg      : array degli angoli TIMBIR [deg]
@@ -76,7 +78,8 @@ def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
     theta_corrected = []
     pulses_corrected = []
 
-    # correzione start taxi: shift angolare
+    # correzione start taxi-> shift angolare
+    
     for theta in angles_deg:
         theta_corr = theta + abs(start_taxi)
         theta_corrected.append(theta_corr)
@@ -103,9 +106,18 @@ import numpy as np
 def compute_real_timeline(theta_corrected, omega_target, accel, counts_per_rev):
     """
     Restituisce gli impulsi reali simulando la rampa del PSO
-    θ is in degrees.
+    θ is in degrees
+    theta_correct = angoli TIMBIR corretti per start taxi
+    omega_target = velocita' angolare del rotary stage [deg/s] (= cost che il motore raggiunge dopo la fase di accelerazione)
+    counts_per_rev = numero di impulsi del PSO per giro completo: quanti impulsi genera il motore per fare 360°
+
+    Durante la rampa la v cresce da 0 a omega_target usando la   θ = 1/2 * a t^2  →  t = sqrt(2θ/a)
     """
+   # pv_omega_target = PV("2bmb:TomoScan:rotarystageplateau") 
+   # omega_target     = pv_omega_target.get() 
+    
     theta_corrected = np.array(theta_corrected)
+    omega_target = 500 * 6  # gradi/sec
 
     # Calcola tempo necessario per accelerare 
     t_acc = omega_target / accel
