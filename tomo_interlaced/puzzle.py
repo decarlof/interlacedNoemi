@@ -1,15 +1,10 @@
 """
 
-PVs rotary :
-maximum speed  2bmb:m102.VMAX
-speed  2bmb:m102.VELO
-base speed  2bmb:m102.Vbas
-Accel 2bmb:m102.ACCL
-
-motor resolution 
-motor resolution   2bmb:m102.MRES
-encoder resolution  2bmb:m102.ERES
-read back resolution  2bmb:m102.RRES
+angles_timbir        → angoli ideali TIMBIR
+theta_corrected      → angoli reali corretti dal taxi
+pulses_corrected     → impulsi assoluti
+delta_pulses         → ritardi da dare al memPulseSeq (capisci se e' corretto)
+pulses_end_corrected → impulso di stop
 
 """
 
@@ -28,25 +23,12 @@ N_theta = int(pv_N_theta.get()) or 32  # numero totale proiezioni
 K       = int(pv_K.get()) or 4          # numero di loop interlacciati 
 
 # ----------------------------------------------------
-# EPICS PVs per Taxi e PSO
-# ----------------------------------------------------
-pv_start_taxi = PV("2bmb:TomoScan:PSOStartTaxi")         # Posizione di inizio taxi [deg]
-pv_end_taxi   = PV("2bmb:TomoScan:PSOEndTaxi")           # Posizione di fine taxi [deg]
-pv_counts     = PV("2bmb:TomoScan:PSOCountsPerRotation") # Numero di impulsi per giro del PSO
-
-# Lettura dai PV
-start_taxi     = pv_start_taxi.get()           # es: -0.749939 degimbir
-end_taxi       = pv_end_taxi.get()             # es: 0.735 deg
-counts_per_rev = pv_counts.get()               # es: 11_840_200 impulsi/giro
-
-# ----------------------------------------------------
 # BIT-REVERSAL
 # ----------------------------------------------------
 def bit_reverse(x, bits):
     """Inverte i bit di x su 'bits' bit"""
     b = f'{x:0{bits}b}'
     return int(b[::-1], 2)
-
 # ----------------------------------------------------
 # TIMBIR
 # ----------------------------------------------------
@@ -68,20 +50,15 @@ for n in range(N_theta):
 
 angles_timbir = np.array(angles_timbir)
 loop_indices = np.array(loop_indices)
-
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 # FUNZIONE TAXI CORRECTION con theta_corrected angoli di timbir corretti 
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
-def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
-    """
-    Corregge gli angoli TIMBIR considerando l'inizio taxi
-    e la fine taxi, e li converte in impulsi PSO
+ """
+    Applica la correzione taxi (taxi_correct) per spostare gli angoli secondo inizio/fine taxi
+    Sposta ogni angolo TIMBIR per il taxi iniziale
     
     Parametri:
         angles_deg      : array degli angoli TIMBIR [deg]
-        start_taxi      : angolo di inizio taxi [deg]
-        end_taxi        : angolo di fine taxi [deg]
-        counts_per_rev  : impulsi per giro del PSO
 
     Ritorna:
         pulses_corrected      : array impulsi corretti per il PSO
@@ -89,7 +66,24 @@ def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
         theta_corrected       : angoli TIMBIR corretti per start taxi
         theta_end_corrected   : angolo finale corretto per end taxi
     """
-    pulse_per_deg = counts_per_rev / 360.0
+
+# ----------------------------------------------------
+# EPICS PVs per Taxi e PSO
+# ----------------------------------------------------
+pv_start_taxi = PV("2bmb:TomoScan:PSOStartTaxi")         # Posizione di inizio taxi [deg]
+pv_end_taxi   = PV("2bmb:TomoScan:PSOEndTaxi")           # Posizione di fine taxi [deg]
+pv_counts     = PV("2bmb:TomoScan:PSOCountsPerRotation") # Numero di impulsi per giro del PSO
+
+# Lettura dai PV
+start_taxi     = pv_start_taxi.get()           # es: -0.749939 deg angolo di inizio taxi
+end_taxi       = pv_end_taxi.get()             # es: 0.735 deg angolo di fine taxi 
+counts_per_rev = pv_counts.get()               # es: 11_840_200 impulsi/giro impulsi per giro del PSO
+
+
+
+def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
+   
+    pulse_per_deg = counts_per_rev / 360.0  # conversione in impulsi
 
     theta_corrected = []
     pulses_corrected = []
@@ -102,9 +96,8 @@ def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
         pulses_corrected.append(theta_corr * pulse_per_deg)
 
     # correzione fine taxi
-    theta_end_corrected = 180.0 + end_taxi
-    pulses_end_corrected = theta_end_corrected * pulse_per_deg
-
+    theta_end_corrected = 180.0 + end_taxi     # posizione angolare in cui il trigger deve fermarsi
+    pulses_end_corrected = theta_end_corrected * pulse_per_deg    # dopo questo stop alla generezione di trigger 
     return np.array(pulses_corrected, dtype=int), int(pulses_end_corrected), theta_corrected, theta_end_corrected
 
 # ----------------------------------------------------
@@ -113,6 +106,34 @@ def taxi_correct(angles_deg, start_taxi, end_taxi, counts_per_rev):
 pulses_corrected, pulses_end_corrected, theta_corrected, theta_end_corrected = taxi_correct(
     angles_timbir, start_taxi, end_taxi, counts_per_rev
 )
+
+# ----------------------------------------------------
+# Generazione ritardi Δpulses per memPulseSeq
+# ----------------------------------------------------
+def compute_deltas(pulses_corrected):
+    pulses_corrected = np.array(pulses_corrected, dtype=int)
+
+    # Primo ritardo: dal punto zero encoder al primo trigger
+    deltas = [pulses_corrected[0]]
+
+    # Tutti gli altri: differenze successive
+    for i in range(1, len(pulses_corrected)):
+        delta = pulses_corrected[i] - pulses_corrected[i-1]
+        deltas.append(int(delta))
+
+    return np.array(deltas, dtype=int)
+
+# ------------------------------------
+# applico agli impulsi
+# ------------------------------------
+
+delta_pulses = compute_deltas(pulses_corrected)
+
+
+
+
+
+
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 # Restituisce gli impulsi reali 
