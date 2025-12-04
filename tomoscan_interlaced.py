@@ -1,14 +1,14 @@
 import numpy as np
 from epics import PV
 
-'''
-tipi di interlacciamento 
-# Equally spaced
-angles_eq = generate_angles(N_theta=32, method='equally_spaced')
+# ----------------------------------------------------
+# Lettura PV
+# ----------------------------------------------------
+pv_N_theta = PV("2bmb:TomoScan:NTheta")   # NUOVO PV
+pv_K = PV("2bmb:TomoScan:KLoops")         # NUOVO PV  
 
-# Golden
-angles_golden = generate_angles(N_theta=32, method='golden')
-'''
+
+
 
 # --------------------------------------------------------------------
 # Interlaced GOLDEN
@@ -89,10 +89,119 @@ def generate_timbir_interlaced_angles():
     return angles_timbir, np.array(angles_timbir), loop_indices
 
 
-# --------------------------------------------------------------------
-# ESEMPIO USO
-# --------------------------------------------------------------------
-if __name__ == "__main__":
-    ang_rad, ang_deg, loops = generate_timbir_interlaced_angles()  
-    print("TIMBIR in gradi:")
-    print(np.round(ang_deg, 4))
+# --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# TOMOSCAN FUNCTION : compute_positions_PSO
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+''' questo metodo prende la configurazione desiderata dello scan (passo angolare, numero di angoli, accelerazione) 
+e calcola tutto ciò che serve per il motore PSO: angoli, velocità, distanze di accelerazione (“taxi”), start e stop reali.'''
+ def compute_positions_PSO(self):
+        '''Computes several parameters describing the fly scan motion.
+        Computes the spacing between points, ensuring it is an integer number
+        of encoder counts.
+        Uses this spacing to recalculate the end of the scan, if necessary.
+        Computes the taxi distance at the beginning and end of scan to allow
+        the stage to accelerate to speed.
+        Assign the fly scan angular position to theta[]
+        '''
+        overall_sense, user_direction = self._compute_senses()                                        # rotazione che puo' essere in 2 sensi scelto by user
+        
+        # Compute the actual delta to keep each interval an integer number of encoder counts
+        encoder_multiply = float(self.epics_pvs['PSOCountsPerRotation'].get()) / 360.                 # quanti impulsi corrispondono a 1 e PSOCountsPerRotation = numero totale di impulsi encoder per 360
+        raw_delta_encoder_counts = self.rotation_step * encoder_multiply                              # passo desiderato in encoder counts, non ancora intero
+        delta_encoder_counts = round(raw_delta_encoder_counts)                                        # passo arrotondato a intero (l’encoder deve lavorare con numeri interi)
+        if abs(raw_delta_encoder_counts - delta_encoder_counts) > 1e-4:
+            log.warning('  *** *** *** Requested scan would have used a non-integer number of encoder counts.')       
+            log.warning('  *** *** *** Calculated # of encoder counts per step = {0:9.4f}'.format(raw_delta_encoder_counts))
+            log.warning('  *** *** *** Instead, using {0:d}'.format(delta_encoder_counts))            # Se l’arrotondamento introduce una differenza significativa (maggiore di 0.0001), logga un warning
+
+''' Salva il passo corretto nei PV EPICS (controllo remoto del motore) Aggiorna self.rotation_step in gradi tenendo conto dell’arrotondamento'''
+     
+        self.epics_pvs['PSOEncoderCountsPerStep'].put(delta_encoder_counts)
+        # Change the rotation step Python variable and PV
+        self.rotation_step = delta_encoder_counts / encoder_multiply
+        self.epics_pvs['RotationStep'].put(self.rotation_step)
+
+''' Calcola il tempo per frame (compute_frame_time()) e la velocità del motore:
+motor_speed = gradi/sec necessari per coprire rotation_step in time_per_angle.  '''
+                
+        # Compute the time for each frame
+        time_per_angle = self.compute_frame_time()
+        self.motor_speed = np.abs(self.rotation_step) / time_per_angle
+
+
+'''  Legge il tempo di accelerazione impostato (RotationAccelTime) Calcola la distanza di accelerazione (accel_dist) usando formula fisica semplificata:   s=1/2 vt 
+serve a sapere quanto spazio serve per arrivare alla velocità costante '''
+        # Get the distance needed for acceleration = 1/2 a t^2 = 1/2 * v * t
+        motor_accl_time = float(self.epics_pvs['RotationAccelTime'].get()) # Acceleration time in s
+        accel_dist = motor_accl_time / 2.0 * float(self.motor_speed) 
+
+''' Determina il nuovo punto di partenza della scansione (rotation_start_new):
+Se senso positivo → punto di partenza normale.
+Altrimenti → regola lo start per compensare la lettura (“readout margin”).'''
+         
+        # Make taxi distance an integer number of measurement deltas >= accel distance
+        # Add 1/2 of a delta to ensure that we are really up to speed.
+        if overall_sense>0:
+            self.rotation_start_new = self.rotation_start
+        else:
+            self.rotation_start_new  = self.rotation_start-(2-self.readout_margin)*self.rotation_step
+
+''' Calcola la distanza “taxi”, cioè quanto deve muoversi il motore prima di iniziare la scansione reale:
+Arrotonda alla quantità intera di passi.
+Salva il risultato nei PV EPICS (PSOStartTaxi).'''
+                if self.rotation_step > 0:
+            taxi_dist = math.ceil(accel_dist / self.rotation_step + 0.5) * self.rotation_step 
+        else:
+            taxi_dist = math.floor(accel_dist / self.rotation_step - 0.5) * self.rotation_step 
+        self.epics_pvs['PSOStartTaxi'].put(self.rotation_start_new - taxi_dist * user_direction)
+
+
+''' Calcola il punto finale della scansione (rotation_stop):
+Ultimo angolo = start + numero di angoli × passo.
+Aggiunge la distanza “taxi” finale per decelerare.
+Salva anche questo nei PV EPICS (PSOEndTaxi).
+   '''     
+        #Where will the last point actually be?
+        self.rotation_stop = (self.rotation_start_new
+                                + (self.num_angles - 1) * self.rotation_step)
+        self.epics_pvs['PSOEndTaxi'].put(self.rotation_stop + taxi_dist * user_direction)
+
+''' Assegna tutti gli angoli della scansione in un array theta[]:
+parrtendo da rotation_start
+Incrementando di rotation_step
+Per num_angles punti.
+  '''      
+        # Assign the fly scan angular position to theta[]
+        self.theta = self.rotation_start + np.arange(self.num_angles) * self.rotation_step
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if __name__ == "__main__":
+    
