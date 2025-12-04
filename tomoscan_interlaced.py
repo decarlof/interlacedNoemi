@@ -11,17 +11,17 @@ angles_golden = generate_angles(N_theta=32, method='golden')
 '''
 
 # --------------------------------------------------------------------
-# Interlaced  GOLDEN
+# Interlaced GOLDEN
 # --------------------------------------------------------------------
 def generate_golden_interlaced_angles():
     # ----------------------------------------------------
     # Lettura PV
     # ----------------------------------------------------
     pv_N_theta = PV("2bmb:TomoScan:NTheta")
-    pv_K       = PV("2bmb:TomoScan:KLoops")
+    pv_K = PV("2bmb:TomoScan:KLoops")
 
     N_theta = int(pv_N_theta.get() or 32)  # default 32 se PV non risponde
-    K       = int(pv_K.get() or 4)         # default 4 se PV non risponde
+    K = int(pv_K.get() or 4)               # default 4 se PV non risponde
 
     # --------------------------------------------------------------------
     # Parametri
@@ -45,32 +45,28 @@ def generate_golden_interlaced_angles():
 
 
 # --------------------------------------------------------------------
-# Interlaced  TIMBIR
+# Interlaced TIMBIR
 # --------------------------------------------------------------------
 def generate_timbir_interlaced_angles():
+    pv_N_theta = PV("2bmb:TomoScan:NTheta")   # numero totale proiezioni
+    pv_K = PV("2bmb:TomoScan:KLoops")         # numero di loop interlacciati
+
+    N_theta = int(pv_N_theta.get() or 32)  # numero totale proiezioni 
+    K = int(pv_K.get() or 4)               # numero di loop interlacciati 
 
     # ----------------------------------------------------
-    # Lettura PV
-    # ----------------------------------------------------
-    pv_N_theta = PV("2bmb:TomoScan:NTheta")
-    pv_K       = PV("2bmb:TomoScan:KLoops")
-
-    N_theta = int(pv_N_theta.get() or 32)
-    K       = int(pv_K.get() or 4)
-
-    # ----------------------------------------------------
-    # Funzione interna: bit reverse
+    # BIT-REVERSAL
     # ----------------------------------------------------
     def bit_reverse(x, bits):
         b = f'{x:0{bits}b}'
         return int(b[::-1], 2)
 
     # ----------------------------------------------------
-    # Generazione schema TIMBIR
+    # TIMBIR
     # ----------------------------------------------------
-    bits = int(np.log2(K))
-    angles = []
-    loops = []
+    angles_timbir = []
+    loop_indices = []
+    bits = int(np.log2(K)) 
 
     for n in range(N_theta):
         base = n * K
@@ -78,23 +74,25 @@ def generate_timbir_interlaced_angles():
         rev = bit_reverse(loop, bits)
         val = base + rev
 
-        theta = (val * 360.0 / N_theta) % 180.0
-        angles.append(theta)
-        loops.append(loop)
+        theta = val * 360.0 / N_theta       # angolo 0-360°
+        theta = theta % 180.0               # 0-180° per tomografia
 
-    angles = np.array(angles)
-    loops = np.array(loops)
+        angles_timbir.append(theta)
+        loop_indices.append(loop)
 
-    # Conversione opzionale in radianti
-    angles_rad = np.deg2rad(angles)
+    angles_timbir = np.array(angles_timbir)
+    loop_indices = np.array(loop_indices)
 
-    return angles_rad, angles, loops
+    print("Angles TIMBIR (degrees):")
+    print(np.round(angles_timbir, 4))
+
+    return angles_timbir, np.array(angles_timbir), loop_indices
 
 
 # --------------------------------------------------------------------
 # ESEMPIO USO
 # --------------------------------------------------------------------
 if __name__ == "__main__":
-    ang_rad, ang_deg, loops = generate_timbir_interlaced_angles()  # CORRETTO: chiamare la funzione definita
+    ang_rad, ang_deg, loops = generate_timbir_interlaced_angles()  
     print("TIMBIR in gradi:")
     print(np.round(ang_deg, 4))
