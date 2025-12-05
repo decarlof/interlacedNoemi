@@ -23,8 +23,7 @@ e calcola tutto ciò che serve per il motore PSO: angoli, velocità, distanze di
         if abs(raw_delta_encoder_counts - delta_encoder_counts) > 1e-4:
             log.warning('  *** *** *** Requested scan would have used a non-integer number of encoder counts.')       
             log.warning('  *** *** *** Calculated # of encoder counts per step = {0:9.4f}'.format(raw_delta_encoder_counts))
-            log.warning('  *** *** *** Instead, using {0:d}'.format(delta_encoder_counts))            # Se l’arrotondamento introduce una differenza significativa (maggiore di 0.0001), logga un warning
-
+            log.warning('  *** *** *** Instead, using {0:d}'.format(delta_encoder_counts))            # Se l’arrotondamento introduce una differenza significativa (maggiore di 0.0001)
 ''' Salva il passo corretto nei PV EPICS (controllo remoto del motore) Aggiorna self.rotation_step in gradi tenendo conto dell’arrotondamento'''
      
         self.epics_pvs['PSOEncoderCountsPerStep'].put(delta_encoder_counts)
@@ -43,7 +42,7 @@ motor_speed = gradi/sec necessari per coprire rotation_step in time_per_angle.  
 '''  Legge il tempo di accelerazione impostato (RotationAccelTime) Calcola la distanza di accelerazione (accel_dist) usando formula fisica semplificata:   s=1/2 vt 
 serve a sapere quanto spazio serve per arrivare alla velocità costante '''
         # Get the distance needed for acceleration = 1/2 a t^2 = 1/2 * v * t
-        motor_accl_time = float(self.epics_pvs['RotationAccelTime'].get()) # Acceleration time in s
+        motor_accl_time = float(self.epics_pvs['RotationAccelTime'].get()) # Acceleration time in s    ACC
         accel_dist = motor_accl_time / 2.0 * float(self.motor_speed) 
 
 ''' Determina il nuovo punto di partenza della scansione (rotation_start_new):
