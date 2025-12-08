@@ -17,8 +17,7 @@ def bit_reverse(x, bits):
     return int(b[::-1], 2)
 
 #-----------------------------------------------------------------
-# Compute acquisition angles_timbir in time order
-# Qui si generano gli angoli interlacciati TIMBIR
+# TIMBIR angle generator (IN ORDER OF ACQUISITION)
 #-----------------------------------------------------------------
 def generate_timbir_angles(N_theta, K):
     bits = int(np.log2(K))
@@ -26,102 +25,183 @@ def generate_timbir_angles(N_theta, K):
     loops = []
 
     for n in range(N_theta):
-        # Valore originale TIMBIR
-        val = n * K + bit_reverse((n * K // N_theta) % K, bits)
+        # TIMBIR index logic
+        group = (n * K // N_theta) % K
+        idx = n * K + bit_reverse(group, bits)
 
-        # Conversione in GRADI (non radianti)
-        # full 360° rotation
-        theta_deg = val * 360.0 / N_theta  
+        # convert index -> degrees (0-360)
+        theta_deg = (idx % N_theta) * 360.0 / N_theta
         angles.append(theta_deg)
-
-        # Determine which loop this acquisition belongs to
-        # Ogni proiezione appartiene a un loop 0..K-1
-        loop = (n * K // N_theta) % K
-        loops.append(loop)
+        loops.append(group)
 
     return np.array(angles), np.array(loops)
 
+# compute TIMBIR angles
 angles_timbir, loop_indices = generate_timbir_angles(N_theta, K)
 
-print("Angoli interlacciati (°):")
-print(angles_timbir)
+#-----------------------------------------------------------------
+# Convert ANGLES → ABSOLUTE PULSES
+#-----------------------------------------------------------------
+absolute_pulses = np.round(angles_timbir * pulses_per_degree).astype(int)
 
 #-----------------------------------------------------------------
-# ogni loop ha un raggio diverso per visualizzazione
+# Convert ABSOLUTE PULSES → DELAYS (this is what FPGA needs)
 #-----------------------------------------------------------------
-radii = r_outer - loop_indices * r_step
+# FPGA wants: N[i] = pulses[i+1] - pulses[i]
+delays = np.diff(absolute_pulses)
 
-#-----------------------------------------------------------------
-#  sequenza degli angoli nel piano polare
-#-----------------------------------------------------------------
-fig = plt.figure(figsize=(7,7))
-ax = fig.add_subplot(111, polar=True)
-ax.set_title(
-    f"TIMBIR Interlaced Acquisition (N={N_theta} - K={K})\nEach loop on its own circle",
-    va='bottom',
-    fontsize=13
-)
-
-# Connect points in true acquisition order
-ax.plot(np.deg2rad(angles_timbir), radii, '-o', lw=1.2, ms=5, alpha=0.8)
-
-# Optional: annotate loop number
-for i in range(N_theta):
-    ax.text(
-        np.deg2rad(angles_timbir[i]),
-        radii[i] + 0.03,
-        str(loop_indices[i] + 1),
-        ha='center',
-        va='bottom',
-        fontsize=8
-    )
-
-# Hide radial ticks
-ax.set_rticks([])
-plt.show()
+# ensure no zeros or negative delays (FPGA cannot handle them)
+# if angles wrap around or unordered, sort OR add 20000 to unwrap
+delays[delays <= 0] += PSOCountsPerRotation
 
 #-----------------------------------------------------------------
-# Simula Counts encoder e impulsi
-# Qui il PSO converte gli angoli in impulsi
+# DEBUG PLOT: angle → pulses → delays
 #-----------------------------------------------------------------
-PSOCountsPerRotation = 20000  
-# 1 impulso = 0.018° circa
-# counts_per_rev = PV("2bmb:TomoScan:PSOCountsPerRotation") # Numero di impulsi per giro del PSO
-
-encoder_multiply = PSOCountsPerRotation / 360.0  # fattore di conversione da angoli a impulsi
-
-# angolo * fattore counts/degree
-raw_delta_encoder_counts = angles_timbir * encoder_multiply
-
-# Arrotondamento perché il PSO accetta solo valori interi
-delta_encoder_counts = np.round(raw_delta_encoder_counts).astype(int)
-
-# Rotation step reale (dopo arrotondamento): trasformo counts in angolo reale per vedere a quanti gradi reali corrispondono
-rotation_step_real_deg = delta_encoder_counts / encoder_multiply
-
 plt.figure(figsize=(12,5))
 
-# --- PLOT ---
+plt.subplot(1,2,1)
+plt.plot(angles_timbir, absolute_pulses, "o-", label="pulses")
+plt.xlabel("Angles (deg)")
+plt.ylabel("Absolute pulses")
+plt.title("Angles → encoder pulses")
+plt.grid()
 
-t = np.arange(len(angles_timbir))   # tempo / indice acquisizione
-
-plt.figure(figsize=(14,6))
-
-# --- Curve principali ---
-plt.plot(t, rotation_step_real_deg, '.-', color='blue', label='Angolo reale (°)')
-plt.plot(t, delta_encoder_counts, '.-', color='orange', label='Count PSO')
-
-# --- Linee verticali che collegano i due valori ---
-for i in range(len(t)):
-    plt.plot([t[i], t[i]],
-             [rotation_step_real_deg[i], delta_encoder_counts[i]],
-             color='gray', alpha=0.4, linewidth=0.8)
-
-plt.xlabel("Tempo / Indice acquisizione")
-plt.ylabel("Valore")
-plt.title("Angolo reale e Count PSO con linee verticali di corrispondenza")
-plt.legend()
-plt.grid(True)
+plt.subplot(1,2,2)
+plt.plot(delays, "o-", label="delays (FPGA input)")
+plt.xlabel("Projection index")
+plt.ylabel("Δ pulses (divide-by-N)")
+plt.title("Pulse delays for FPGA")
+plt.grid()
 
 plt.tight_layout()
 plt.show()
+
+#-----------------------------------------------------------------
+# PRINT OUTPUT FOR FPGA
+#-----------------------------------------------------------------
+print("\n=== ANGOLI TIMBIR (deg) ===")
+print(angles_timbir)
+
+print("\n=== IMPULSI ASSOLUTI ===")
+print(absolute_pulses)
+
+print("\n=== DELAYS (FPGA READY) ===")
+print(delays)
+import numpy as np
+
+def simulate_taxi_motion(accel, decel, omega_target, theta_total, dt=1e-4):
+    """
+    Simula un fly-scan realistico:
+      - accel. con accelerazione costante
+      - regime a omega_target
+      - decelerazione con decel costante
+    
+    Restituisce:
+        t_vec        → ascissa temporale
+        theta_real   → angolo reale percorso
+        omega_real   → velocità istantanea
+    """
+    # ------------------------------
+    # 1. Accelerazione
+    # ------------------------------
+    T_acc = omega_target / accel
+    t_acc = np.arange(0, T_acc, dt)
+    theta_acc = 0.5 * accel * t_acc**2
+
+    # ------------------------------
+    # 2. Plateau
+    # ------------------------------
+    theta_acc_end = theta_acc[-1]
+    theta_to_cover = theta_total - 2 * theta_acc_end
+
+    T_flat = theta_to_cover / omega_target
+    t_flat = np.arange(0, T_flat, dt)
+    theta_flat = theta_acc_end + omega_target * t_flat
+
+    # ------------------------------
+    # 3. Decelerazione
+    # ------------------------------
+    T_dec = omega_target / decel
+    t_dec = np.arange(0, T_dec, dt)
+    theta_dec = theta_flat[-1] + omega_target*t_dec - 0.5*decel*t_dec**2
+
+    # ------------------------------
+    # Concatenazione
+    # ------------------------------
+    t_vec = np.concatenate([
+        t_acc,
+        t_acc[-1] + t_flat,
+        t_acc[-1] + t_flat[-1] + t_dec
+    ])
+
+    theta_real = np.concatenate([theta_acc, theta_flat, theta_dec])
+    omega_real = np.gradient(theta_real, dt)
+
+    return t_vec, theta_real, omega_real
+
+
+def invert_theta(theta_real, t_vec, theta_targets):
+    """
+    Interpola i tempi reali in cui lo stage raggiunge gli angoli target.
+    """
+    return np.interp(theta_targets, theta_real, t_vec)
+
+
+def angles_to_real_pulses(theta_real, pulses_per_degree):
+    return np.round(theta_real * pulses_per_degree).astype(int)
+
+
+def pulses_to_delays(pulses_real, pulses_per_rev):
+    delays = np.diff(pulses_real)
+
+    # FPGA: N deve essere sempre > 0
+    delays[delays <= 0] += pulses_per_rev
+
+    return delays
+
+
+def compute_taxi_corrected_delays(angles_ideal,
+                                  pulses_per_degree,
+                                  pulses_per_rev,
+                                  accel,
+                                  decel,
+                                  omega_target,
+                                  theta_total):
+    """
+    Pipeline completa:
+       1. Simula θ_real(t)
+       2. Trova t(θ_ideal)
+       3. Ricava θ_real(t_real)
+       4. Converti in pulses_real
+       5. Calcola delays FPGA-ready
+
+ pulses_real → il vero impulso in cui lo stage raggiunge ogni angolo TIMBIR
+
+delays → array esatto per la FPGA, accurato al microsecondo
+
+theta_reached → angolo realmente raggiunto
+
+t_real → tempo esatto del trigger
+    """
+
+    # 1) Simulazione profilo reale
+    t_vec, theta_real_vec, omega_vec = simulate_taxi_motion(
+        accel, decel, omega_target, theta_total
+    )
+
+    # 2) Tempi reali dei singoli angoli
+    t_real = invert_theta(theta_real_vec, t_vec, angles_ideal)
+
+    # 3) Angolo reale al tempo corretto
+    theta_reached = np.interp(t_real, t_vec, theta_real_vec)
+
+    # 4) Converti in impulsi
+    pulses_real = angles_to_real_pulses(theta_reached, pulses_per_degree)
+
+    # 5) Converti impulsi → delays FPGA
+    delays = pulses_to_delays(pulses_real, pulses_per_rev)
+
+    return pulses_real, delays, theta_reached, t_real
+
+
+
