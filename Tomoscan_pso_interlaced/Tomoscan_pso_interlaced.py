@@ -233,21 +233,47 @@ con
  '''impulsi che voglio inviare se il motore si muovesse perfettamente senza accelerazioni e ritardi''''
 
     # ----------------------------------------------------------------------
-    # Grafico
+    #  X = impulsi ideali
     # ----------------------------------------------------------------------
-    def plot_diagnostics(self):
-        plt.figure(figsize=(12,6))
-        plt.plot(self.theta_interlaced, self.PSOCountsIdeal, 'o-', label="Impulsi ideali")
-        plt.plot(self.theta_interlaced, self.PSOCountsTaxiCorrected, 'o-', label="Impulsi taxi-corretti")
-        plt.plot(self.theta_interlaced, self.PSOCountsFinal, 'o-', label="Impulsi finali FPGA", linewidth=3, alpha=0.7)
+    def plot_all_comparisons(self):
 
-        plt.xlabel("Angolo interlacciato (deg)")
-        plt.ylabel("Impulsi PSO (assoluti)")
-        plt.title("Diagnostica impulsi TIMBIR = FPGA")
-        plt.grid()
-        plt.legend()
+        ideal = self.PSOCountsIdeal
+        real  = self.PSOCountsTaxiCorrected
+        final = self.PSOCountsFinal
+
+        fig, axs = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+
+        # --- Subplot 1: Ideal vs Real ---
+        axs[0].plot(ideal, ideal, 'o--', label="Ideal", alpha=0.6)
+        axs[0].plot(ideal, real,  'o-',  label="Real (Taxi-corrected)", alpha=0.9)
+        axs[0].set_title("Confronto 1: Ideale vs Reale (taxi-corrected)")
+        axs[0].set_ylabel("Counts")
+        axs[0].grid(True)
+        axs[0].legend()
+
+        # --- Subplot 2: Ideal vs Final FPGA ---
+        axs[1].plot(ideal, ideal, 'o--', label="Ideal", alpha=0.6)
+        axs[1].plot(ideal, final, 'o-', label="Final FPGA", alpha=0.9)
+        axs[1].set_title("Confronto 2: Ideale vs Finale FPGA")
+        axs[1].set_ylabel("Counts")
+        axs[1].grid(True)
+        axs[1].legend()
+
+        # --- Subplot 3: Real vs Final FPGA ---
+        axs[2].plot(real, real, 'o--', label="Real (taxi-corrected)", alpha=0.6)
+        axs[2].plot(real, final, 'o-', label="Final FPGA", alpha=0.9)
+        axs[2].set_title("Confronto 3: Reale vs Finale FPGA")
+        axs[2].set_xlabel("Impulsi encoder (asse X comune)")
+        axs[2].set_ylabel("Counts")
+        axs[2].grid(True)
+        axs[2].legend()
+
         plt.tight_layout()
         plt.show()
+
+
+
+
 
 
 # ============================================================================
