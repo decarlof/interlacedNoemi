@@ -140,42 +140,47 @@ movimento del campione dovrebbe essere lento o costante per evitare blur
         taxi_steps = math.ceil((accel_dist / abs(self.rotation_step)) + 0.5)                           # = quanti step effettivi servono distanza continua[deg], ceil arrotonda per eccesso  + mergine sicurezza 0.5
         taxi_dist  = taxi_steps * abs(self.rotation_step)                                              # = la distanza reale di taxi[deg]= step_interi × step_angolare
 
-        self.PSOStartTaxi = self.rotation_start_new - taxi_dist * user_direction
-        self.rotation_stop_new = self.rotation_start_new + (self.num_angles - 1) * self.rotation_step
-        self.PSOEndTaxi   = self.rotation_stop_new + taxi_dist * user_direction
+        #Flyscan logic 
+        self.PSOStartTaxi = self.rotation_start_new - taxi_dist * user_direction                       # PSOStartTaxi = posizione da cui parte l’accelerazione
+        self.rotation_stop_new = self.rotation_start_new + (self.num_angles - 1) * self.rotation_step  # rotation_stop_new = ultimo angolo di acquisizione
+        self.PSOEndTaxi   = self.rotation_stop_new + taxi_dist * user_direction                        # PSOEndTaxi = posizione dove termina la decelerazione
 
         # Angoli "classici"
-        self.theta_classic = self.rotation_start_new + np.arange(self.num_angles) * self.rotation_step
+        self.theta_classic = self.rotation_start_new + np.arange(self.num_angles) * self.rotation_step # theta_classic = la lista di angoli equispaziati da acquisire
+
+''' non sono angoli timbir ma quelli equispaziati per acquisizione standard , usati per calcolare correttamente rotation_step , v motore e correzioni taxi 
+'''
 
     # ----------------------------------------------------------------------
     # TIMBIR — bit reverse
     # ----------------------------------------------------------------------
     def bit_reverse(self, n, bits):
-        return int(f"{n:0{bits}b}"[::-1], 2)
+        return int(f"{n:0{bits}b}"[::-1], 2)        # Converte n in binario su   bit lo inverte e lo riporta a intero
 
-      # ----------------------------------------------------------------------
-    #  
-    # ----------------------------------------------------------------------
-'''  
-'''
- 
-    def generate_interlaced_angles(self):
-        """
-        Genera gli angoli TIMBIR interlacciati, ordinati in senso crescente.
-        """
-        bits = int(np.log2(self.num_angles))
-        theta = np.array([
-            self.bit_reverse(n, bits) * 360.0 / self.num_angles
-            for n in range(self.num_angles)
-        ])
-        self.theta_interlaced = np.sort(theta)
+# ----------------------------------------------------------------------
+#   Genera gli angoli TIMBIR interlacciati 
+# ----------------------------------------------------------------------
+def generate_interlaced_timbir_angles(self):
+
+    bits = int(np.log2(self.K_interlace))                         # bit necessari per rappresentare K_interlace
+    theta = []                                                    # lista temporanea angoli TIMBIR
+
+    for n in range(self.num_angles):
+        group = (n * self.K_interlace // self.num_angles) % self.K_interlace      #  quale loop (0..K-1) contiene la proiezione n
+        group_br = self.bit_reverse(group, bits)                                  # bit-reversal al numero del loop
+        idx = n * self.K_interlace + group_br                                     #  TIMBIR interlacciato
+        angle_deg = (idx % self.num_angles) * 360.0 / self.num_angles             # conversione dell’indice in angolo  
+        theta.append(angle_deg)                                                   # aggiungi angolo alla lista
+    self.theta_interlaced_timbir = np.sort(theta)                                 # ordina angoli
+
+
 
     # ----------------------------------------------------------------------
     # Modello cinematico del taxi
     # ----------------------------------------------------------------------
     def simulate_taxi_motion(self, omega_target=10, dt=1e-4):
         """
-        Simula accelerazione → regime → decelerazione
+        Simula accelerazione = regime = decelerazione
         per modellare angolo reale(t).
         """
         accel = decel = omega_target / self.RotationAccelTime
@@ -205,7 +210,7 @@ movimento del campione dovrebbe essere lento o costante per evitare blur
 
     # ----------------------------------------------------------------------
     def convert_angles_to_counts(self):
-        """Converte angoli → impulsi PSO assoluti."""
+        """Converte angoli = impulsi PSO assoluti."""
         pulses_per_degree = self.PSOCountsPerRotation / 360.0
         self.PSOCountsIdeal = np.round(self.theta_interlaced * pulses_per_degree).astype(int)
         self.PSOCountsTaxiCorrected = np.round(self.theta_real * pulses_per_degree).astype(int)
@@ -236,7 +241,7 @@ movimento del campione dovrebbe essere lento o costante per evitare blur
 
         plt.xlabel("Angolo interlacciato (deg)")
         plt.ylabel("Impulsi PSO (assoluti)")
-        plt.title("Diagnostica impulsi TIMBIR → FPGA")
+        plt.title("Diagnostica impulsi TIMBIR = FPGA")
         plt.grid()
         plt.legend()
         plt.tight_layout()
