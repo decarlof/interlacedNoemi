@@ -290,4 +290,4 @@ if __name__ == "__main__":
     scan.convert_angles_to_counts()
 
     scan.plot_diagnostics()
-    scan.save_pulses_bin("pulses.bin")
+    scan.plot_all_comparisons()
