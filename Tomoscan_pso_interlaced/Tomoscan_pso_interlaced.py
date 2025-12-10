@@ -152,6 +152,7 @@ class InterlacedScan:
 
         bits = int(np.log2(self.K_interlace))
         theta = []
+        group_indices = []
 
         for n in range(self.num_angles):
             group = (n * self.K_interlace // self.num_angles) % self.K_interlace
@@ -159,8 +160,28 @@ class InterlacedScan:
             idx = n * self.K_interlace + group_br
             angle_deg = (idx % self.num_angles) * 360.0 / self.num_angles
             theta.append(angle_deg)
+            group_indices.append(group)
 
         self.theta_interlaced = np.sort(theta)
+        self.theta_interlaced_unwrapped = np.rad2deg(np.unwrap(np.deg2rad(theta)))
+
+        # Added plot to verify TIMBIR angle locations
+        group_indices = np.array(group_indices)
+        radii = 1 - group_indices * 0.15
+        # Plot acquisition sequence
+        fig = plt.figure(figsize=(7, 7))
+        ax = fig.add_subplot(111, polar=True)
+        ax.set_title(f"TIMBIR Interlaced Acquisition (N={self.num_angles} - K={self.K_interlace })\nEach loop on its own circle",
+                     va='bottom', fontsize=13)
+
+        ax.plot(np.deg2rad(theta), radii, '-o', lw=1.2, ms=5, alpha=0.8, color='tab:blue')
+
+        for i in range(self.num_angles):
+            ax.text(theta[i], radii[i] + 0.03,
+                    str(group_indices[i] + 1), ha='center', va='bottom', fontsize=8)
+
+        ax.set_rticks([])
+        plt.show()
 
     # ----------------------------------------------------------------------
     # Modello taxi
@@ -221,7 +242,39 @@ class InterlacedScan:
         '''
         impulsi ideali se il motore fosse perfetto
         '''
+        # ----------------------------------------------------------------------
+        # Error between the angle in floating point and the angle rounded to the 
+        # closest encoder pulse
+        # ----------------------------------------------------------------------
+        # 1) Closest integer pulse number
+        pulse_counts = np.round(self.theta_interlaced / 360.0 * self.PSOCountsPerRotation).astype(int)
 
+        # 2) Actual angle of those pulses (these are the one we want to save with the projections in the hdf file)
+        actual_angles = pulse_counts / pulses_per_degree
+
+        # 3) Angular error (actual - desired)
+        angular_error = actual_angles - self.theta_interlaced
+
+        # Print results nicely
+        for a, p, act, err in zip(self.theta_interlaced, pulse_counts, actual_angles, angular_error):
+            print(f"Target: {a:8.2f} deg | Pulse: {p:6d} | Actual: {act:9.6f} deg | Error: {err:+.6f} deg")  
+
+        print('********************* unwrapped angles *********************')
+        # same for unwrapped angles
+        # 1) Closest integer pulse number
+        pulse_counts = np.round(self.theta_interlaced_unwrapped / 360.0 * self.PSOCountsPerRotation).astype(int)
+
+        # 2) Actual angle of those pulses (these are the one we want to save with the projections in the hdf file)
+        actual_angles = pulse_counts / pulses_per_degree
+
+        # 3) Angular error (actual - desired)
+        angular_error = actual_angles - self.theta_interlaced_unwrapped
+
+        # Print results nicely
+        for a, p, act, err in zip(self.theta_interlaced_unwrapped, pulse_counts, actual_angles, angular_error):
+            print(f"Target: {a:8.2f} deg | Pulse: {p:6d} | Actual: {act:9.6f} deg | Error: {err:+.6f} deg")  
+
+ 
     # ----------------------------------------------------------------------
     # Plot comparativi
     # ----------------------------------------------------------------------
@@ -259,7 +312,7 @@ class InterlacedScan:
 # ============================================================================
 if __name__ == "__main__":
 
-    scan = InterlacedScan(num_angles=32, K_interlace=4)
+    scan = InterlacedScan(num_angles=32, K_interlace=4, PSOCountsPerRotation=20000)
 
     scan.compute_positions_PSO()
     scan.generate_interlaced_angles()
