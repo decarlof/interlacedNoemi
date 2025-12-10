@@ -24,7 +24,7 @@ class InterlacedScan:
                  rotation_start=0.0,
                  rotation_stop=360.0,
                  num_angles=32,
-                 PSOCountsPerRotation=20000,
+                 PSOCountsPerRotation=20,
                  RotationDirection=0,
                  RotationAccelTime=0.15,
                  exposure=0.01,
@@ -152,6 +152,7 @@ class InterlacedScan:
 
         bits = int(np.log2(self.K_interlace))
         theta = []
+        group_indices = []
 
         for n in range(self.num_angles):
             group = (n * self.K_interlace // self.num_angles) % self.K_interlace
@@ -159,8 +160,27 @@ class InterlacedScan:
             idx = n * self.K_interlace + group_br
             angle_deg = (idx % self.num_angles) * 360.0 / self.num_angles
             theta.append(angle_deg)
+            group_indices.append(group)
 
         self.theta_interlaced = np.sort(theta)
+
+        # Added plot to verify TIMBIR angle locations
+        group_indices = np.array(group_indices)
+        radii = 1 - group_indices * 0.15
+        # Plot acquisition sequence
+        fig = plt.figure(figsize=(7, 7))
+        ax = fig.add_subplot(111, polar=True)
+        ax.set_title(f"TIMBIR Interlaced Acquisition (N={self.num_angles} - K={self.K_interlace })\nEach loop on its own circle",
+                     va='bottom', fontsize=13)
+
+        ax.plot(np.deg2rad(theta), radii, '-o', lw=1.2, ms=5, alpha=0.8, color='tab:blue')
+
+        for i in range(self.num_angles):
+            ax.text(theta[i], radii[i] + 0.03,
+                    str(group_indices[i] + 1), ha='center', va='bottom', fontsize=8)
+
+        ax.set_rticks([])
+        plt.show()
 
     # ----------------------------------------------------------------------
     # Modello taxi
