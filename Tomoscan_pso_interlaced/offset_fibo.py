@@ -13,7 +13,9 @@ rotation_start = 0    # angolo iniziale
 # Funzione per generare angoli interlacciati con offset Fibonacci
 # ----------------------------------------------------------------------
 def generate_interlaced_angles(rotation_start, num_angles, K_interlace):
-    golden_angle = 360 * golden_ratio  # Golden Angle ≈ 222.492° se usi 360*(√5-1)/2
+    golden_angle = 360 * golden_ratio  # Golden Angle= 222.492° per  360*(√5-1)/2
+    # golden_a = (3 - np.sqrt(5)) / 2 # ≈ 111.246° oppure questo?
+    
     
     angles_all = []
 
@@ -70,3 +72,4 @@ plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.show()
+
