@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 # Parametri
 num_angles = 32  # n di angoli per ciclo
 K_interlace = 4  # loops
-golden_ratio = (np.sqrt(5) - 1) / 2  # 1.618
+golden_ratio = (np.sqrt(5) - 1) / 2  # 0.618
 rotation_start = 0  # start
 golden_a = (3 - np.sqrt(5)) / 2  # ≈ 111.246°
 
@@ -58,6 +58,7 @@ plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.show()
+
 
 
 
