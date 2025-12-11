@@ -8,15 +8,7 @@ import matplotlib.pyplot as plt
 # ============================================================================
 
 class InterlacedScan:
-    """
-        - logica TomoScanPSO e nomenclatura
-        - generazione angoli interlacciati TIMBIR
-        - correzione taxi
-        - conversione angoli to impulsi
-        - esportazione impulsi in formato binario per memPulseSeq
-        - grafici di verifica
-    """
-
+   
     # ----------------------------------------------------------------------
     # init e parametri
     # ----------------------------------------------------------------------
@@ -51,16 +43,11 @@ class InterlacedScan:
         # Distanza angolare nominale
         self.rotation_step = (rotation_stop - rotation_start) / (num_angles - 1)
 
-        '''
-        divide l'intervallo di scansione in N punti equidistanti: serve alla parte meccanica
-        per stabilire la velocità motore, velocità taxi, finestra PSO e conversione in impulsi.
-        La cinematica richiede comunque uno spacing nominale costante.
-        '''
+    ################################################################################ 
+    # METHOD
+    ################################################################################ 
 
-    # ----------------------------------------------------------------------
-    # Metodo per selezionare il metodo di interlacciamento : fornisce anfoli del tipo interlaced_"metodo selezionato"
-    # lo utilizzza per le valutazioni successive
-    # ----------------------------------------------------------------------
+    
     def select_interlacing_method(self, method_name="Timbir"):
         """
         Seleziona il metodo di interlacciamento e genera gli angoli interlaced_metodo
@@ -72,7 +59,7 @@ class InterlacedScan:
 
         if method_name in interlacing_methods:
             print(f"Select method : {method_name}")
-            interlacing_methods[method_name]()  # chiama metodo scelto
+            interlacing_methods[method_name]()  # chiama metodo 
         else:
             print(f"Method '{method_name}' not found!")
 
@@ -134,10 +121,7 @@ class InterlacedScan:
     # ----------------------------------------------------------------------
     #  TomoScanPSO.compute_senses()
     # ----------------------------------------------------------------------
-    '''
-    Determina in che direzione il sistema encoder conterà gli impulsi durante la scansione.
-    Utile per PSO e taxi.
-    '''
+  
     def compute_senses(self):
 
         encoder_dir = 1 if self.PSOCountsPerRotation > 0 else -1
@@ -148,24 +132,13 @@ class InterlacedScan:
     # ----------------------------------------------------------------------
     #  Tempo per Frame
     # ----------------------------------------------------------------------
-    '''
-    Tempo totale richiesto dalla camera per acquisire una singola immagine.
-    Tempo totale per frame = esposizione + readout
-    '''
-    def compute_frame_time(self):
+        def compute_frame_time(self):
         return self.exposure + self.readout
-
-    '''
-    Nell'exposure time il sensore vede il fascio e accumula fotoni.
-    Durante il readout la camera non può acquisire un nuovo frame.
-    '''
-
+            
     # ----------------------------------------------------------------------
     #  compute_positions_PSO()
     # ----------------------------------------------------------------------
-    '''
-    Come il motore si muove effettivamente con rotation_step in impulsi interi.
-    '''
+    
     def compute_positions_PSO(self):
 
         overall_sense, user_direction = self.compute_senses()
@@ -180,17 +153,8 @@ class InterlacedScan:
         dt = self.compute_frame_time()
         self.motor_speed = abs(self.rotation_step) / dt
 
-        '''
-        v = motor_speed (velocità finale)
-        t = RotationAccelTime
-        s = distanza necessaria per accelerare
-        '''
         accel_dist = 0.5 * self.motor_speed * self.RotationAccelTime
 
-        '''
-        Se overall_sense<0 l'encoder conta al contrario rispetto al movimento.
-        Serve offset.
-        '''
         if overall_sense > 0:
             self.rotation_start_new = self.rotation_start
         else:
@@ -211,9 +175,7 @@ class InterlacedScan:
     # ----------------------------------------------------------------------
     # Modello taxi
     # ----------------------------------------------------------------------
-    '''
-    Simulazione moto con accelerazione = regime = decelerazione.
-    '''
+    
     def simulate_taxi_motion(self, omega_target=10, dt=1e-4):
 
         accel = decel = omega_target / self.RotationAccelTime
