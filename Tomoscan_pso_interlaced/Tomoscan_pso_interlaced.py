@@ -44,29 +44,10 @@ class InterlacedScan:
         # Distanza angolare nominale
         self.rotation_step = (rotation_stop - rotation_start) / (num_angles - 1)
 
-    # ----------------------------------------------------------------------
-    # Seleziona Metodo
-    # ----------------------------------------------------------------------
-    def select_interlacing_method(self, method_name="GoldenAngle"):
-        """
-        Seleziona il metodo di interlacciamento e genera gli angoli interlaced_metodo
-        """
-        interlacing_methods = {
-            "Timbir": self.generate_interlaced_timbir,
-            "GoldenAngle": self.generate_interlaced_goldenangle
-        }
-
-
-        print(f"Attempting to select method: {method_name}")  # Debug
-
-        if method_name in interlacing_methods:
-            print(f"Method '{method_name}' found.")  # Conferma che il metodo è stato trovato
-            interlacing_methods[method_name]()  # Chiama il metodo selezionato
-        else:
-            print(f"Method '{method_name}' not found!")  # Debug se il metodo non viene trovato
+#################### MODE
 
     # ----------------------------------------------------------------------
-    #   Genera angoli TIMBIR interlacciati
+    #   TIMBIR
     # ----------------------------------------------------------------------
     def generate_interlaced_timbir(self):  # Rinominato qui
 
@@ -103,12 +84,19 @@ class InterlacedScan:
         ax.set_rticks([])
         plt.show()
 
-    # ----------------------------------------------------------------------
-    # TIMBIR — bit reverse
-    # ----------------------------------------------------------------------
+
     def bit_reverse(self, n, bits):
         return int(f"{n:0{bits}b}"[::-1], 2)
 
+    # ----------------------------------------------------------------------
+    #   GOLDEN ANGLE
+    # ----------------------------------------------------------------------
+
+
+
+    # ----------------------------------------------------------------------
+    #           FUNZIONI
+    # ----------------------------------------------------------------------
 
     # ----------------------------------------------------------------------
     #  TomoScanPSO.compute_senses()
@@ -300,11 +288,15 @@ class InterlacedScan:
 if __name__ == "__main__":
     scan = InterlacedScan(num_angles=32, K_interlace=4, PSOCountsPerRotation=20)
 
-    scan.compute_positions_PSO()
-    scan.generate_interlaced_timbir()  # Modifica qui
+   # select method
+    scan.generate_interlaced_timbir()
+    #scan.generate_interlaced_goldenagle()
+    #scan.generate_interlaced_other()
+
     scan.simulate_taxi_motion()
     scan.compute_real_motion()
     scan.convert_angles_to_counts()
+    scan.compute_positions_PSO()
 
     scan.plot_all_comparisons()
     scan.plot()
